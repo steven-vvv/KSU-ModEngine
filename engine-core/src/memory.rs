@@ -345,7 +345,12 @@ mod tests {
         fn drop(&mut self) {
             drop(self.control.take());
             // SAFETY: reap only our owned child; no borrowed pointers.
-            unsafe { while libc::waitpid(self.pid, std::ptr::null_mut(), 0) < 0 { if std::io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) { break; } } }
+            unsafe {
+                // Concurrent fork tests can inherit other fixtures' control-pipe
+                // writers. Terminate this owned, unreaped child explicitly so
+                // cleanup never depends on unrelated inherited descriptors.
+                libc::kill(self.pid, libc::SIGTERM);
+                while libc::waitpid(self.pid, std::ptr::null_mut(), 0) < 0 { if std::io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) { break; } } }
         }
     }
     #[test] fn owned_fixture_scan_refine_and_write() {
