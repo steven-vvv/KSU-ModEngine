@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#0c1418"><title>KSU ModEngine · 脚本工作台</title></head>
+<body>
+  <aside class="rail" aria-label="工作区">
+    <a class="brand" href="#main" aria-label="KSU ModEngine 首页">K<span>↗</span></a>
+    <div class="rail-icon selected" title="脚本工作台" aria-label="当前：脚本工作台">⌘</div>
+    <span class="rail-label">WORKSPACE</span><span class="rail-version">v0.1</span>
+  </aside>
+  <div class="app">
+    <header class="topbar"><div class="product">KSU <strong>ModEngine</strong><span class="separator">/</span><span>开发控制台</span></div><span class="preview-badge"><i></i> LINUX PREVIEW</span></header>
+    <main id="main">
+      <div class="page-heading"><div><div class="eyebrow">SCRIPT WORKBENCH</div><h1>脚本工作台<span class="title-dot">.</span></h1><p>审阅脚本权限，将每一次执行绑定到明确的源码摘要。</p></div><div class="version-box">DEVELOPER EDITION<span>v0.1.0</span></div></div>
+      <div class="notice"><span class="notice-icon">i</span><div><strong>本地 fixture 开发预览</strong><p>当前页面在浏览器内分析脚本并生成 CLI 命令。尚未接入后端或 Android transport，不能安装 Android 模块或直接运行脚本。</p></div><span class="notice-tag">LOCAL ONLY</span></div>
+      <div class="workspace-grid">
+        <section class="panel source-panel" aria-labelledby="source-title">
+          <div class="panel-heading"><div class="panel-title"><span class="step">01</span><h2 id="source-title">脚本源码</h2></div><label class="button secondary import-button">↑ 导入文件<input id="file-import" data-testid="file-import" type="file" accept=".lua,.js,text/plain,text/javascript" class="visually-hidden"></label></div>
+          <div class="editor-toolbar"><div class="sample-tabs" aria-label="加载示例"><button id="sample-lua" data-testid="sample-lua" class="tab active">Lua 示例</button><button id="sample-js" data-testid="sample-js" class="tab">JavaScript 示例</button></div><span id="source-size" class="micro">0 B / 48 KiB</span></div>
+          <label for="source-editor" class="visually-hidden">脚本源码编辑器</label><textarea id="source-editor" data-testid="source-editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="source-note"></textarea>
+          <div class="editor-footer"><span><i class="status-dot"></i> UTF-8 · 全文 SHA-256</span><button id="download-source" class="text-button">↓ 保存当前源码</button></div>
+          <p id="source-note" class="field-note">导入只读取本地文件，不会上传。编辑后的源码需保存到 CLI 使用的本地路径。</p>
+        </section>
+        <section class="panel manifest-panel" aria-labelledby="manifest-title">
+          <div class="panel-heading"><div class="panel-title"><span class="step">02</span><h2 id="manifest-title">清单与能力</h2></div><span class="micro">MANIFEST</span></div>
+          <div class="manifest-body"><div id="manifest-status" data-testid="manifest-status" role="status" class="analysis-status"></div><dl id="manifest-fields" data-testid="manifest-fields"></dl>
+          <div class="section-label">声明权限 <span id="grant-count">0</span></div><div id="capabilities" class="capabilities" data-testid="capabilities"></div>
+          <div id="validation-errors" data-testid="validation-errors" aria-live="polite"></div>
+          <p class="authority-note">浏览器校验仅供预览。清单解析与最终授权以 engine-core / 宿主 CLI 为准。</p></div>
+          <div class="limits"><div><span>内存访问</span><strong>16 KiB / 次</strong></div><div><span>VM 预算</span><strong>2 s · 64 MiB</strong></div><div><span>结果上限</span><strong>1,024 条</strong></div></div>
+        </section>
+      </div>
+      <section class="panel execute-panel" aria-labelledby="execute-title">
+        <div class="panel-heading"><div class="panel-title"><span class="step">03</span><h2 id="execute-title">核对摘要，在终端执行</h2></div><span class="micro">EXPLICIT APPROVAL</span></div>
+        <div class="execute-body"><div class="execution-config"><div class="path-field"><label for="script-path">本地脚本路径</label><input id="script-path" data-testid="script-path" type="text" value="examples/demo.lua" spellcheck="false"><p class="field-note">先将当前源码保存到这个路径，再运行命令。路径相对于仓库根目录。</p></div><div class="sandbox-field"><label class="toggle-row"><input id="development-toggle" data-testid="development-toggle" type="checkbox"><span><strong>Development 沙箱</strong><small>仅用于自有测试脚本；默认关闭</small></span></label><p id="sandbox-description" class="field-note">默认 strict：隔离不可用时直接失败，不会自动降级。</p></div></div>
+        <div class="hash-box"><div><span class="section-label">SOURCE FINGERPRINT</span><span id="hash-state" class="micro">SHA-256</span></div><code id="source-hash" data-testid="source-hash" aria-live="polite"></code><p>批准绑定全文内容；任何修改都会生成新的摘要。</p></div>
+        <div class="command-row"><div class="command-label"><span class="command-number">1</span><strong>检查清单</strong><span>先确认宿主解析结果</span></div><div class="command-box"><code id="inspect-command" data-testid="inspect-command"></code><button id="copy-inspect" data-testid="copy-inspect" class="button secondary">复制命令</button></div></div>
+        <div class="command-row"><div class="command-label"><span class="command-number">2</span><strong>显式授权并运行 fixture</strong><span>仅访问宿主派生的测试进程</span></div><div class="command-box"><code id="run-command" data-testid="run-command"></code><button id="copy-run" data-testid="copy-run" class="button primary">复制授权命令</button></div></div>
+        <p class="terminal-note">从仓库根目录执行，需先构建宿主与对应 Runner。strict 需要系统隔离权限；可用性通过 <code>./target/debug/ksu-mod-hostd doctor</code> 检查。</p>
+        </div>
+      </section>
+      <footer class="footer"><span>KSU ModEngine <span class="footer-dot">·</span> Capability microkernel</span><span>Fixture: <code>com.example.ksumod.fixture</code></span></footer>
+    </main>
+  </div><div id="feedback" role="status" aria-live="polite" class="toast" hidden></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
