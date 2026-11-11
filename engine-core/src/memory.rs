@@ -303,7 +303,7 @@ impl MemorySession {
         let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
         if page <= 0
             || page as u64 > MAX_TRANSFER_BYTES as u64
-            || range.start % page as u64 != 0
+            || !range.start.is_multiple_of(page as u64)
             || range.end.checked_sub(range.start) != Some(page as u64)
         {
             return Err(target(

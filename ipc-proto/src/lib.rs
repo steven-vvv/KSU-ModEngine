@@ -316,7 +316,7 @@ impl SeqPacket {
                 "timeout must be positive",
             ));
         }
-        let micros = timeout.as_micros() + u128::from(timeout.subsec_nanos() % 1000 != 0);
+        let micros = timeout.as_micros() + u128::from(!timeout.subsec_nanos().is_multiple_of(1000));
         let seconds = (micros / 1_000_000)
             .try_into()
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "timeout is too large"))?;
