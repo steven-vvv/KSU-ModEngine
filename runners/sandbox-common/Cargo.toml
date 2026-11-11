@@ -11,3 +11,8 @@ thiserror.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "sandbox_child"
+path = "tests/sandbox_child.rs"
+harness = false
