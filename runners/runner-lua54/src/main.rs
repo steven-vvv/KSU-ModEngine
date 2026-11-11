@@ -5,6 +5,15 @@ use std::{cell::Cell, rc::Rc, time::Instant};
 
 fn run() -> Result<(), String> {
     let (boot, config, shared) = bootstrap()?;
+    let result = execute(&boot, &config, &shared);
+    finish(&shared, result.err())
+}
+
+fn execute(
+    boot: &ipc_proto::Bootstrap,
+    config: &sandbox_common::SandboxConfig,
+    shared: &bridge::Shared,
+) -> Result<(), String> {
     // Excluding coroutine prevents new Lua threads bypassing the main-thread hook.
     let lua = Lua::new_with(
         StdLib::TABLE | StdLib::STRING | StdLib::UTF8 | StdLib::MATH,
@@ -43,8 +52,8 @@ fn run() -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     // Instantiate all host/VM state before seccomp; no VM execution until ready is acknowledged.
-    sandbox_common::enter(&config).map_err(|e| e.to_string())?;
-    deadline.set(ready(&shared, &config.mode, boot.timeout_ms)?);
+    sandbox_common::enter(config).map_err(|e| format!("sandbox setup failed: {e}"))?;
+    deadline.set(ready(shared, &config.mode, boot.timeout_ms)?);
     let result = lua
         .load(&boot.source)
         .set_name(&boot.script_name)
@@ -54,7 +63,7 @@ fn run() -> Result<(), String> {
     if Instant::now() >= deadline.get() {
         error = Some("execution deadline exceeded".into());
     }
-    finish(&shared, error)
+    error.map_or(Ok(()), Err)
 }
 fn main() {
     if let Err(error) = run() {

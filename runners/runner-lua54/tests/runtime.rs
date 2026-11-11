@@ -33,12 +33,16 @@ impl Drop for RunnerChild {
 }
 
 fn exercise(source: &str, expected_failure: bool) {
+    exercise_mode(source, expected_failure, "development");
+}
+
+fn exercise_mode(source: &str, expected_failure: bool, mode: &str) {
     let (host, runner) = SeqPacket::pair().unwrap();
     host.set_recv_timeout(Duration::from_secs(8)).unwrap();
     let raw = runner.as_raw_fd();
     let mut command = Command::new(env!("CARGO_BIN_EXE_runner-lua54"));
     command
-        .args(["--ipc-fd", "3", "--sandbox", "development"])
+        .args(["--ipc-fd", "3", "--sandbox", mode])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -83,14 +87,25 @@ fn exercise(source: &str, expected_failure: bool) {
         assert_eq!(packet.request_id, id);
         id += 1;
         let response = match packet.message {
-            Message::Request(Request::SandboxReady { mode }) => {
-                assert_eq!(mode, "development");
+            Message::Request(Request::SandboxReady { mode: actual }) => {
+                assert_eq!(
+                    mode, "development",
+                    "strict without empty root must fail before Ready"
+                );
+                assert_eq!(actual, mode);
                 assert!(!ready);
                 ready = true;
                 Response::Ok
             }
             Message::Request(request) => {
-                assert!(ready);
+                if mode == "strict" {
+                    assert!(!ready);
+                    assert!(
+                        matches!(&request, Request::Finished { error: Some(message) } if message.contains("sandbox setup failed") && message.len() <= 4096)
+                    );
+                } else {
+                    assert!(ready);
+                }
                 match request {
                     Request::ScanI32 { value: 1337 }
                     | Request::RefineI32 { value: 1337 }
@@ -177,4 +192,11 @@ fn heap_is_bounded() {
         "local t = {}; while true do t[#t+1] = string.rep('x', 1024*1024) end",
         true,
     );
+}
+
+#[test]
+fn strict_failure_reports_reason_before_ready() {
+    // Missing empty root makes strict unavailable for root too. The script must
+    // never execute, including after any partial sandbox setup failure.
+    exercise_mode("engine.log('source must not run')", true, "strict");
 }

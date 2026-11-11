@@ -5,6 +5,15 @@ use std::{cell::Cell, rc::Rc, time::Instant};
 
 fn run() -> Result<(), String> {
     let (boot, config, shared) = bootstrap()?;
+    let result = execute(&boot, &config, &shared);
+    finish(&shared, result.err())
+}
+
+fn execute(
+    boot: &ipc_proto::Bootstrap,
+    config: &sandbox_common::SandboxConfig,
+    shared: &bridge::Shared,
+) -> Result<(), String> {
     // rquickjs-sys 0.11.0 embeds QuickJS-ng 0.11.0, not an external process.
     let runtime = Runtime::new().map_err(|e| e.to_string())?;
     runtime.set_memory_limit(boot.memory_limit_bytes as usize);
@@ -30,8 +39,8 @@ fn run() -> Result<(), String> {
     runtime.set_interrupt_handler(Some(Box::new(move || {
         Instant::now() >= interrupt_deadline.get()
     })));
-    sandbox_common::enter(&config).map_err(|e| e.to_string())?;
-    deadline.set(ready(&shared, &config.mode, boot.timeout_ms)?);
+    sandbox_common::enter(config).map_err(|e| format!("sandbox setup failed: {e}"))?;
+    deadline.set(ready(shared, &config.mode, boot.timeout_ms)?);
     let mut error = context.with(|ctx| {
         match ctx.eval::<(), _>(boot.source.as_bytes()) {
             Ok(()) => None,
@@ -59,7 +68,7 @@ fn run() -> Result<(), String> {
     if Instant::now() >= deadline.get() {
         error = Some("execution deadline exceeded".into());
     }
-    finish(&shared, error)
+    error.map_or(Ok(()), Err)
 }
 fn main() {
     if let Err(error) = run() {
