@@ -37,6 +37,10 @@ fn exercise(source: &str, expected_failure: bool) {
 }
 
 fn exercise_mode(source: &str, expected_failure: bool, mode: &str) {
+    exercise_detail(source, expected_failure, mode, None);
+}
+
+fn exercise_detail(source: &str, expected_failure: bool, mode: &str, expected_error: Option<&str>) {
     let (host, runner) = SeqPacket::pair().unwrap();
     host.set_recv_timeout(Duration::from_secs(8)).unwrap();
     let raw = runner.as_raw_fd();
@@ -139,6 +143,14 @@ fn exercise_mode(source: &str, expected_failure: bool, mode: &str) {
                     }
                     Request::Finished { error } => {
                         assert_eq!(error.is_some(), expected_failure, "{error:?}");
+                        if let Some(expected) = expected_error {
+                            assert!(
+                                error
+                                    .as_deref()
+                                    .is_some_and(|message| message.contains(expected)),
+                                "{error:?}"
+                            );
+                        }
                         finished = true;
                         Response::Ok
                     }
@@ -203,4 +215,34 @@ fn strict_failure_reports_reason_before_ready() {
     // Missing empty root makes strict unavailable for root too. The script must
     // never execute, including after any partial sandbox setup failure.
     exercise_mode("engine.log('source must not run')", true, "strict");
+}
+
+#[test]
+fn promise_chain_is_explicitly_unsupported() {
+    exercise_detail(
+        "Promise.resolve().then(() => { throw Error('job must not run'); });",
+        true,
+        "development",
+        Some("asynchronous JavaScript is unsupported"),
+    );
+}
+
+#[test]
+fn promise_rejection_is_explicitly_unsupported() {
+    exercise_detail(
+        "Promise.reject(Error('unhandled'));",
+        true,
+        "development",
+        Some("asynchronous JavaScript is unsupported"),
+    );
+}
+
+#[test]
+fn async_function_invocation_is_explicitly_unsupported() {
+    exercise_detail(
+        "async function task() { throw Error('unhandled'); } task();",
+        true,
+        "development",
+        Some("asynchronous JavaScript is unsupported"),
+    );
 }

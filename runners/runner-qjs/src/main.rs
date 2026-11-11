@@ -34,6 +34,12 @@ fn execute(
             ctx.eval::<(), _>(include_str!("api.js"))
         })
         .map_err(|e| e.to_string())?;
+    // Install after trusted API setup so any user-created Promise, including
+    // implicit promises from async functions/import(), prevents success. Jobs
+    // are never pumped by this synchronous v0.1 runner.
+    let promise_seen = Rc::new(Cell::new(false));
+    let promise_flag = promise_seen.clone();
+    runtime.set_promise_hook(Some(Box::new(move |_, _, _, _| promise_flag.set(true))));
     let deadline = Rc::new(Cell::new(Instant::now()));
     let interrupt_deadline = deadline.clone();
     runtime.set_interrupt_handler(Some(Box::new(move || {
@@ -67,6 +73,11 @@ fn execute(
     });
     if Instant::now() >= deadline.get() {
         error = Some("execution deadline exceeded".into());
+    }
+    if promise_seen.get() {
+        error = Some(
+            "asynchronous JavaScript is unsupported in v0.1; Promise jobs are not executed".into(),
+        );
     }
     error.map_or(Ok(()), Err)
 }

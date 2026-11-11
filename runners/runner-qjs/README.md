@@ -3,11 +3,16 @@
 Uses the QuickJS-ng 0.11.0 C runtime bundled in `rquickjs-sys` 0.11.0.
 No external JavaScript interpreter or QuickJS std/os module is used. The
 synchronous engine API accepts hex string addresses (or BigInt inputs), preserving
-all 64 address bits. Promise jobs are not pumped; use synchronous scripts.
+all 64 address bits. Scripts run synchronously: creating, resolving or chaining
+any Promise, including invoking an async function, explicitly fails the run with
+an unsupported-async error. Promise jobs are not pumped. Timers and asynchronous
+I/O are unavailable. Synchronous work performed before the error is not rolled
+back.
 
 `tests/runtime.rs` runs the actual binary in a development sandbox child with a
 stub IPC host. It covers engine roundtrips, 64-bit addresses, denied globals,
-host errors becoming exceptions, deadlines, and memory exhaustion. It must never
+host errors becoming exceptions, deadlines, memory exhaustion, and explicit
+rejection of Promise/async execution. It must never
 install seccomp in the cargo test process itself.
 
 The private bridge is intentionally duplicated with runner-lua54 to keep the
