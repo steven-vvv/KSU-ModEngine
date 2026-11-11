@@ -1,0 +1,14 @@
+[package]
+name = "runner-qjs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libc.workspace = true
+rquickjs.workspace = true
+ipc-proto.workspace = true
+sandbox-common.workspace = true
+
+[lints]
+workspace = true

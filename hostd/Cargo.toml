@@ -1,0 +1,16 @@
+[package]
+name = "ksu-mod-hostd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ipc-proto.workspace = true
+engine-core.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,8 @@
+/target/
+/.tools/
+/.cache/
+/.worktrees/
+/dist/
+/webui/node_modules/
+/webui/dist/
+*.log

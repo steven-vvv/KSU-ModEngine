@@ -1,0 +1,14 @@
+[package]
+name = "runner-lua54"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libc.workspace = true
+mlua.workspace = true
+ipc-proto.workspace = true
+sandbox-common.workspace = true
+
+[lints]
+workspace = true
