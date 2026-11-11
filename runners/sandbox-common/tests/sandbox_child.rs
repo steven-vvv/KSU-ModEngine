@@ -8,6 +8,7 @@ use std::{
 fn main() {
     let scenario = std::env::args().nth(1);
     if let Some(scenario) = scenario {
+        std::panic::set_hook(Box::new(|info| diagnostic(&format!("child panic: {info}"))));
         child(&scenario);
         return;
     }
@@ -38,14 +39,46 @@ fn main() {
                 Ok(())
             });
         }
-        let status = command.status().unwrap();
+        let mut child = command.spawn().unwrap();
+        unsafe {
+            libc::close(sockets[1]);
+        }
+        let status = child.wait().unwrap();
+        let mut messages = Vec::new();
+        loop {
+            let mut bytes = [0_u8; 4096];
+            let count = unsafe {
+                libc::recv(
+                    sockets[0],
+                    bytes.as_mut_ptr().cast(),
+                    bytes.len(),
+                    libc::MSG_DONTWAIT,
+                )
+            };
+            if count <= 0 {
+                break;
+            }
+            messages.push(String::from_utf8_lossy(&bytes[..count as usize]).into_owned());
+        }
         unsafe {
             libc::close(sockets[0]);
-            libc::close(sockets[1]);
         }
         assert!(
             status.success(),
-            "sandbox child {scenario} failed: {status}"
+            "sandbox child {scenario} failed: {status}; diagnostics: {messages:?}"
+        );
+    }
+}
+fn diagnostic(message: &str) {
+    // This is the only descriptor still usable after enter(), including on an
+    // error after stdio cleanup. Keep diagnostics within one small datagram.
+    let bytes = message.as_bytes();
+    unsafe {
+        libc::send(
+            3,
+            bytes.as_ptr().cast(),
+            bytes.len().min(4096),
+            libc::MSG_NOSIGNAL,
         );
     }
 }

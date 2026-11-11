@@ -10,6 +10,9 @@ propagation private, overlays the supplied empty directory with a read-only,
 noexec/nosuid/nodev empty tmpfs, chroots, clears supplementary groups, bounding
 and ambient capabilities, changes real/effective/saved GID and UID to 65534,
 clears effective/permitted/inheritable capabilities and disables dumpability.
+Because changing UID/GID clears the Linux parent-death signal, strict entry
+captures the parent PID before isolation, re-arms SIGKILL after credential drops
+and fails if the parent PID changed during that window.
 The parent owns creation/removal of the empty directory. Namespace or credential
 failures are reported precisely. Strict success cannot be exercised by an
 ordinary unprivileged account; no host configuration should be changed to hide
@@ -53,3 +56,9 @@ explicit development, strict rejection without its prerequisites, inherited FD
 cleanup, IPC/mapping functionality and EPERM for dangerous syscalls. Strict
 success requires a separate privileged integration environment and remains an
 explicit limitation on ordinary developer machines.
+
+Helper failures and panics are reported to the test parent over descriptor 3,
+including failures after stdio has been closed. Thread-enumeration DirEntry
+values are released before close_range: their retained directory streams must
+not outlive descriptor cleanup. Strict credential-drop and parent-death behavior
+still require a privileged integration environment for end-to-end validation.

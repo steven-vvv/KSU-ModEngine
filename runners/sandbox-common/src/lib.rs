@@ -60,6 +60,9 @@ fn fs_error(step: &'static str, source: io::Error) -> SandboxError {
 /// Enter the explicitly selected mode; never retries with weaker isolation.
 /// Caller must terminate on error, and must not execute source until this returns successfully.
 pub fn enter(config: &SandboxConfig) -> Result<SandboxReport, SandboxError> {
+    // Credential changes in strict mode clear an inherited PDEATHSIG. Remember
+    // the parent before changing any process state, then re-arm after dropping.
+    let expected_parent = unsafe { libc::getppid() };
     if config.ipc_fd != 3 {
         return Err(invalid("IPC must use fd 3"));
     }
@@ -77,6 +80,9 @@ pub fn enter(config: &SandboxConfig) -> Result<SandboxReport, SandboxError> {
     if threads.len() != 1 {
         return Err(invalid("runner must have exactly one thread"));
     }
+    // DirEntry retains the directory stream internally. Drop every entry before
+    // close_range, otherwise its later destructor calls closedir on a closed FD.
+    drop(threads);
     // Validate the sole surviving descriptor before changing process state.
     let mut socket_type: libc::c_int = 0;
     let mut len = std::mem::size_of_val(&socket_type) as libc::socklen_t;
@@ -113,7 +119,7 @@ pub fn enter(config: &SandboxConfig) -> Result<SandboxReport, SandboxError> {
     }
     let filter = filter()?; // Compile before lowering resource limits.
     if config.mode == SandboxMode::Strict {
-        strict(config)?;
+        strict(config, expected_parent)?;
     }
     unsafe {
         checked(
@@ -161,7 +167,7 @@ fn limit(resource: libc::__rlimit_resource_t, value: u64) -> Result<(), SandboxE
     };
     unsafe { checked("setrlimit", libc::setrlimit(resource, &limits)) }
 }
-fn strict(config: &SandboxConfig) -> Result<(), SandboxError> {
+fn strict(config: &SandboxConfig, expected_parent: libc::pid_t) -> Result<(), SandboxError> {
     unsafe {
         if libc::geteuid() != 0 {
             return Err(invalid(
@@ -253,6 +259,15 @@ fn strict(config: &SandboxConfig) -> Result<(), SandboxError> {
         }
         checked("drop gid", libc::setresgid(65534, 65534, 65534))?;
         checked("drop uid", libc::setresuid(65534, 65534, 65534))?;
+        checked(
+            "restore parent death signal",
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0),
+        )?;
+        // Close the race where the parent exits between the credential change
+        // (which clears PDEATHSIG) and re-arming it. No source runs on failure.
+        if libc::getppid() != expected_parent {
+            return Err(invalid("parent changed while entering strict sandbox"));
+        }
         #[repr(C)]
         struct CapHeader {
             version: u32,
