@@ -101,11 +101,16 @@ fn validate(packet: &Packet) -> Result<(), ProtocolError> {
     let limit = match &packet.message {
         Message::Bootstrap(b) if b.source.len() > MAX_SOURCE_SIZE => Some("source"),
         Message::Request(Request::ReadMemory { len, .. })
-            if *len as usize > MAX_MEMORY_TRANSFER => Some("memory read"),
-        Message::Request(Request::WriteMemory { data, .. })
-            if data.len() > MAX_MEMORY_TRANSFER => Some("memory write"),
-        Message::Request(Request::GetResults { limit })
-            if *limit as usize > MAX_RESULTS => Some("result count"),
+            if *len as usize > MAX_MEMORY_TRANSFER =>
+        {
+            Some("memory read")
+        }
+        Message::Request(Request::WriteMemory { data, .. }) if data.len() > MAX_MEMORY_TRANSFER => {
+            Some("memory write")
+        }
+        Message::Request(Request::GetResults { limit }) if *limit as usize > MAX_RESULTS => {
+            Some("result count")
+        }
         Message::Response(Response::Bytes { data }) if data.len() > MAX_MEMORY_TRANSFER => {
             Some("memory response")
         }
@@ -118,7 +123,9 @@ fn validate(packet: &Packet) -> Result<(), ProtocolError> {
         return Err(ProtocolError::LimitExceeded(limit));
     }
     if (kind(&packet.message) == 1) != (packet.request_id == 0) {
-        return Err(ProtocolError::InvalidFrame("bootstrap requires ID 0; requests/responses require nonzero IDs"));
+        return Err(ProtocolError::InvalidFrame(
+            "bootstrap requires ID 0; requests/responses require nonzero IDs",
+        ));
     }
     Ok(())
 }
@@ -162,7 +169,9 @@ pub fn decode_packet(frame: &[u8]) -> Result<Packet, ProtocolError> {
         return Err(ProtocolError::LimitExceeded("payload"));
     }
     if frame.len() != HEADER_SIZE + payload_len {
-        return Err(ProtocolError::InvalidFrame("payload length or trailing frame bytes"));
+        return Err(ProtocolError::InvalidFrame(
+            "payload length or trailing frame bytes",
+        ));
     }
     let mut deserializer = rmp_serde::Deserializer::new(Cursor::new(&frame[HEADER_SIZE..]));
     let message = Message::deserialize(&mut deserializer)?;
@@ -172,7 +181,10 @@ pub fn decode_packet(frame: &[u8]) -> Result<Packet, ProtocolError> {
     if kind(&message) != frame[5] {
         return Err(ProtocolError::InvalidFrame("message kind mismatch"));
     }
-    let packet = Packet { request_id, message };
+    let packet = Packet {
+        request_id,
+        message,
+    };
     validate(&packet)?;
     Ok(packet)
 }
@@ -194,13 +206,20 @@ impl SeqPacket {
         loop {
             // SAFETY: fds points to two writable descriptor slots.
             let result = unsafe {
-                libc::socketpair(libc::AF_UNIX, libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC, 0, fds.as_mut_ptr())
+                libc::socketpair(
+                    libc::AF_UNIX,
+                    libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC,
+                    0,
+                    fds.as_mut_ptr(),
+                )
             };
             if result == 0 {
                 // SAFETY: socketpair returned two new owned descriptors.
                 return Ok(unsafe {
-                    (Self::from_owned_fd(OwnedFd::from_raw_fd(fds[0])),
-                     Self::from_owned_fd(OwnedFd::from_raw_fd(fds[1])))
+                    (
+                        Self::from_owned_fd(OwnedFd::from_raw_fd(fds[0])),
+                        Self::from_owned_fd(OwnedFd::from_raw_fd(fds[1])),
+                    )
                 });
             }
             let error = io::Error::last_os_error();
@@ -220,7 +239,12 @@ impl SeqPacket {
         loop {
             // SAFETY: frame is live and readable for its full length.
             let sent = unsafe {
-                libc::send(self.as_raw_fd(), frame.as_ptr().cast(), frame.len(), libc::MSG_NOSIGNAL)
+                libc::send(
+                    self.as_raw_fd(),
+                    frame.as_ptr().cast(),
+                    frame.len(),
+                    libc::MSG_NOSIGNAL,
+                )
             };
             if sent >= 0 {
                 if sent as usize != frame.len() {
@@ -244,7 +268,10 @@ impl SeqPacket {
         // usize storage gives cmsghdr the alignment required by CMSG_*.
         let mut control = vec![0usize; words];
         loop {
-            let mut iov = libc::iovec { iov_base: frame.as_mut_ptr().cast(), iov_len: frame.len() };
+            let mut iov = libc::iovec {
+                iov_base: frame.as_mut_ptr().cast(),
+                iov_len: frame.len(),
+            };
             // SAFETY: zero is a valid initial msghdr (all pointers initially null).
             let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
             msg.msg_iov = &mut iov;
@@ -252,7 +279,8 @@ impl SeqPacket {
             msg.msg_control = control.as_mut_ptr().cast();
             msg.msg_controllen = std::mem::size_of_val(control.as_slice());
             // SAFETY: all buffers referenced by msg are writable and remain live.
-            let received = unsafe { libc::recvmsg(self.as_raw_fd(), &mut msg, libc::MSG_CMSG_CLOEXEC) };
+            let received =
+                unsafe { libc::recvmsg(self.as_raw_fd(), &mut msg, libc::MSG_CMSG_CLOEXEC) };
             if received < 0 {
                 let error = io::Error::last_os_error();
                 if error.kind() == io::ErrorKind::Interrupted {
@@ -283,22 +311,37 @@ impl SeqPacket {
     /// reported as ProtocolError::Io with WouldBlock/TimedOut from the OS.
     pub fn set_recv_timeout(&self, timeout: Duration) -> io::Result<()> {
         if timeout.is_zero() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "timeout must be positive"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "timeout must be positive",
+            ));
         }
         let micros = timeout.as_micros() + u128::from(timeout.subsec_nanos() % 1000 != 0);
-        let seconds = (micros / 1_000_000).try_into().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidInput, "timeout is too large")
-        })?;
-        let tv = libc::timeval { tv_sec: seconds, tv_usec: (micros % 1_000_000) as _ };
+        let seconds = (micros / 1_000_000)
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "timeout is too large"))?;
+        let tv = libc::timeval {
+            tv_sec: seconds,
+            tv_usec: (micros % 1_000_000) as _,
+        };
         loop {
             // SAFETY: tv is a valid timeval and its size is passed exactly.
             let result = unsafe {
-                libc::setsockopt(self.as_raw_fd(), libc::SOL_SOCKET, libc::SO_RCVTIMEO,
-                    (&tv as *const libc::timeval).cast(), std::mem::size_of_val(&tv) as libc::socklen_t)
+                libc::setsockopt(
+                    self.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    libc::SO_RCVTIMEO,
+                    (&tv as *const libc::timeval).cast(),
+                    std::mem::size_of_val(&tv) as libc::socklen_t,
+                )
             };
-            if result == 0 { return Ok(()); }
+            if result == 0 {
+                return Ok(());
+            }
             let error = io::Error::last_os_error();
-            if error.kind() != io::ErrorKind::Interrupted { return Err(error); }
+            if error.kind() != io::ErrorKind::Interrupted {
+                return Err(error);
+            }
         }
     }
 }
@@ -312,9 +355,13 @@ fn close_received_rights(msg: &libc::msghdr) {
             let cmsg = &*header;
             if cmsg.cmsg_level == libc::SOL_SOCKET && cmsg.cmsg_type == libc::SCM_RIGHTS {
                 let header_len = libc::CMSG_LEN(0) as usize;
-                let count = (cmsg.cmsg_len as usize).saturating_sub(header_len) / std::mem::size_of::<RawFd>();
+                let count = (cmsg.cmsg_len as usize).saturating_sub(header_len)
+                    / std::mem::size_of::<RawFd>();
                 for index in 0..count {
-                    let fd = libc::CMSG_DATA(header).cast::<RawFd>().add(index).read_unaligned();
+                    let fd = libc::CMSG_DATA(header)
+                        .cast::<RawFd>()
+                        .add(index)
+                        .read_unaligned();
                     // Do not retry close on EINTR: Linux has already released fd.
                     libc::close(fd);
                 }
